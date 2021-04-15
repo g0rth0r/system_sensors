@@ -98,7 +98,7 @@ def on_message(client, userdata, message):
         send_config_message(client)
 
 
-def updateSensors():
+def updateSensors(): #Update this with new sensors
     payload_str = (
         '{'
         + f'"temperature": {get_temp()},'
@@ -113,6 +113,7 @@ def updateSensors():
         + f'"host_ip": "{get_host_ip()}",'
         + f'"host_os": "{get_host_os()}",'
         + f'"host_arch": "{get_host_arch()}"'
+
     )
     if "check_available_updates" in settings and settings["check_available_updates"] and not apt_disabled:
         payload_str = payload_str + f', "updates": {get_updates()}' 
@@ -123,6 +124,18 @@ def updateSensors():
             payload_str = (
                 payload_str + f', "disk_use_{drive.lower()}": {get_disk_usage(settings["external_drives"][drive])}'
             )
+    # TODO: Add similar method for network_traffic: DONE
+    if "interfaces" in settings:
+        for iface in settings["interfaces"]:
+            down, up = get_network_traffic(settings["interfaces"][iface])
+            payload_str = (
+                payload_str + f', "download_{iface.lower()}": {down}'
+            )
+
+            payload_str = (
+                    payload_str + f', "upload_{iface.lower()}": {up}'
+            )
+
     payload_str = payload_str + "}"
     mqttClient.publish(
         topic=f"system-sensors/sensor/{deviceName}/state",
@@ -157,6 +170,20 @@ def get_disk_usage(path):
 def get_memory_usage():
     return str(psutil.virtual_memory().percent)
 
+def get_network_traffic(adapter):
+    # TODO: get the network traffic
+    SLEEP =5
+    adapter = "Ethernet"
+    netio = psutil.net_io_counters(pernic=True)
+    time.sleep(SLEEP)
+    new_netio = psutil.net_io_counters(pernic=True)
+
+    speed_recv = ((new_netio[adapter].bytes_recv - netio[adapter].bytes_recv) / 1000000) / SLEEP
+    speed_sent = ((new_netio[adapter].bytes_sent - netio[adapter].bytes_sent) / 1000000) / SLEEP
+
+    print(f"Iface: {adapter} :: Bytes Sent: {speed_sent:.3f} MB/s --- Bytes Received: {speed_recv:.3f} MB/s")
+
+    return (speed_recv, speed_sent)
 
 def get_cpu_usage():
     return str(psutil.cpu_percent(interval=None))
@@ -282,6 +309,16 @@ def remove_old_topics():
         for drive in settings["external_drives"]:
             mqttClient.publish(
                 topic=f"homeassistant/sensor/{deviceNameDisplay}/{deviceNameDisplay}DiskUse{drive}/config",
+                payload='',
+                qos=1,
+                retain=False,
+            )
+
+    # TODO: Add for ifaces. DONE.
+    if "interfaces" in settings:
+        for iface in settings["interfaces"]:
+            mqttClient.publish(
+                topic=f"homeassistant/sensor/{deviceNameDisplay}/{deviceNameDisplay}Interface{iface}/config",
                 payload='',
                 qos=1,
                 retain=False,
@@ -538,7 +575,40 @@ def send_config_message(mqttClient):
                 qos=1,
                 retain=True,
             )
-            
+
+
+    # TODO add for ifaces defines the topcics: DONE
+    if "interfaces" in settings:
+        for iface in settings["interfaces"]:
+            mqttClient.publish(
+                topic=f"homeassistant/sensor/{deviceName}/download_{iface.lower()}/config",
+                payload=f"{{\"name\":\"{deviceNameDisplay} Download Rate {drive}\","
+                        + f"\"state_topic\":\"system-sensors/sensor/{deviceName}/state\","
+                        + '"unit_of_measurement":"MB/s",'
+                        + f"\"value_template\":\"{{{{value_json.download_{iface.lower()}}}}}\","
+                        + f"\"unique_id\":\"{deviceName}_sensor_download_{iface.lower()}\","
+                        + f"\"availability_topic\":\"system-sensors/sensor/{deviceName}/availability\","
+                        + f"\"device\":{{\"identifiers\":[\"{deviceName}_sensor\"],"
+                        + f"\"name\":\"{deviceNameDisplay} Sensors\",\"model\":\"RPI {deviceNameDisplay}\", \"manufacturer\":\"RPI\"}},"
+                        + f"\"icon\":\"mdi:download\"}}",
+                qos=1,
+                retain=True,
+            )
+
+            mqttClient.publish(
+                topic=f"homeassistant/sensor/{deviceName}/upload_{iface.lower()}/config",
+                payload=f"{{\"name\":\"{deviceNameDisplay} upload Rate {drive}\","
+                        + f"\"state_topic\":\"system-sensors/sensor/{deviceName}/state\","
+                        + '"unit_of_measurement":"MB/s",'
+                        + f"\"value_template\":\"{{{{value_json.upload_{iface.lower()}}}}}\","
+                        + f"\"unique_id\":\"{deviceName}_sensor_upload_{iface.lower()}\","
+                        + f"\"availability_topic\":\"system-sensors/sensor/{deviceName}/availability\","
+                        + f"\"device\":{{\"identifiers\":[\"{deviceName}_sensor\"],"
+                        + f"\"name\":\"{deviceNameDisplay} Sensors\",\"model\":\"RPI {deviceNameDisplay}\", \"manufacturer\":\"RPI\"}},"
+                        + f"\"icon\":\"mdi:upload\"}}",
+                qos=1,
+                retain=True,
+            )
 
     mqttClient.publish(f"system-sensors/sensor/{deviceName}/availability", "online", retain=True)
 
@@ -561,14 +631,14 @@ def on_connect(client, userdata, flags, rc):
 
 if __name__ == "__main__":
     args = _parser().parse_args()
-    with open(args.settings) as f:
+    with open(args.settings) as f: # Parse System Settings
         # use safe_load instead load
         settings = yaml.safe_load(f)
     check_settings(settings)
     DEFAULT_TIME_ZONE = timezone(settings["timezone"])
     if "update_interval" in settings:
-        WAIT_TIME_SECONDS = settings["update_interval"]
-    mqttClient = mqtt.Client(client_id=settings["client_id"])
+        WAIT_TIME_SECONDS = settings["update_interval"] # Update the wait time if specified.
+    mqttClient = mqtt.Client(client_id=settings["client_id"])  # START Connect to MQTT Broken Start
     mqttClient.on_connect = on_connect                      #attach function to callback
     mqttClient.on_message = on_message
     deviceName = settings["deviceName"].replace(" ", "").lower()
@@ -586,20 +656,20 @@ if __name__ == "__main__":
         mqttClient.connect(settings["mqtt"]["hostname"], 1883)
     try:
         remove_old_topics()
-        send_config_message(mqttClient)
+        send_config_message(mqttClient) # SEND CONFIG DATA HERE
     except:
         write_message_to_console("something whent wrong")
     _underVoltage = new_under_voltage()
     job = Job(interval=timedelta(seconds=WAIT_TIME_SECONDS), execute=updateSensors)
-    job.start()
+    job.start() # Start sensor job
 
-    mqttClient.loop_start()
+    mqttClient.loop_start() # END of MQTT connection section
 
     while True:
         try:
-            sys.stdout.flush()
+            sys.stdout.flush() #flushes stdout
             time.sleep(1)
-        except ProgramKilled:
+        except ProgramKilled: # handles killing program gracefully.
             write_message_to_console("Program killed: running cleanup code")
             mqttClient.publish(f"system-sensors/sensor/{deviceName}/availability", "offline", retain=True)
             mqttClient.disconnect()
