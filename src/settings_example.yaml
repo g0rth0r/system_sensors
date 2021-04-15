@@ -11,3 +11,5 @@ check_wifi_strength: true
 check_available_updates: true
 external_drives:
   Drive1: /boot/
+interfaces:
+  Ethernet: eth0

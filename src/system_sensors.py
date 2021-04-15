@@ -124,7 +124,6 @@ def updateSensors(): #Update this with new sensors
             payload_str = (
                 payload_str + f', "disk_use_{drive.lower()}": {get_disk_usage(settings["external_drives"][drive])}'
             )
-    # TODO: Add similar method for network_traffic: DONE
     if "interfaces" in settings:
         for iface in settings["interfaces"]:
             down, up = get_network_traffic(settings["interfaces"][iface])
@@ -171,7 +170,6 @@ def get_memory_usage():
     return str(psutil.virtual_memory().percent)
 
 def get_network_traffic(adapter):
-    # TODO: get the network traffic
     SLEEP =5
     netio = psutil.net_io_counters(pernic=True)
     time.sleep(SLEEP)
@@ -180,7 +178,8 @@ def get_network_traffic(adapter):
     speed_recv = ((new_netio[adapter].bytes_recv - netio[adapter].bytes_recv) / 1000000) / SLEEP
     speed_sent = ((new_netio[adapter].bytes_sent - netio[adapter].bytes_sent) / 1000000) / SLEEP
 
-    print(f"Iface: {adapter} :: Bytes Sent: {speed_sent:.3f} MB/s --- Bytes Received: {speed_recv:.3f} MB/s")
+    write_message_to_console(f"Iface: {adapter} :: Bytes Sent: {speed_sent:.3f} MB/s --- Bytes Received: \
+    {speed_recv:.3f} MB/s")
 
     return (speed_recv, speed_sent)
 
@@ -313,7 +312,6 @@ def remove_old_topics():
                 retain=False,
             )
 
-    # TODO: Add for ifaces. DONE.
     if "interfaces" in settings:
         for iface in settings["interfaces"]:
             mqttClient.publish(
@@ -576,12 +574,11 @@ def send_config_message(mqttClient):
             )
 
 
-    # TODO add for ifaces defines the topcics: DONE
     if "interfaces" in settings:
         for iface in settings["interfaces"]:
             mqttClient.publish(
                 topic=f"homeassistant/sensor/{deviceName}/download_{iface.lower()}/config",
-                payload=f"{{\"name\":\"{deviceNameDisplay} Download Rate {drive}\","
+                payload=f"{{\"name\":\"{deviceNameDisplay} Download Rate {iface}\","
                         + f"\"state_topic\":\"system-sensors/sensor/{deviceName}/state\","
                         + '"unit_of_measurement":"MB/s",'
                         + f"\"value_template\":\"{{{{value_json.download_{iface.lower()}}}}}\","
@@ -596,7 +593,7 @@ def send_config_message(mqttClient):
 
             mqttClient.publish(
                 topic=f"homeassistant/sensor/{deviceName}/upload_{iface.lower()}/config",
-                payload=f"{{\"name\":\"{deviceNameDisplay} upload Rate {drive}\","
+                payload=f"{{\"name\":\"{deviceNameDisplay} upload Rate {iface}\","
                         + f"\"state_topic\":\"system-sensors/sensor/{deviceName}/state\","
                         + '"unit_of_measurement":"MB/s",'
                         + f"\"value_template\":\"{{{{value_json.upload_{iface.lower()}}}}}\","
