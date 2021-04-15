@@ -173,7 +173,6 @@ def get_memory_usage():
 def get_network_traffic(adapter):
     # TODO: get the network traffic
     SLEEP =5
-    adapter = "Ethernet"
     netio = psutil.net_io_counters(pernic=True)
     time.sleep(SLEEP)
     new_netio = psutil.net_io_counters(pernic=True)
